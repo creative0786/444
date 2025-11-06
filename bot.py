@@ -979,8 +979,7 @@ if __name__ == '__main__':
 ## requirements.txt
 
 
-python-telegram-bot==20.7
-aiohttp==3.9.1
+
 
 
 
