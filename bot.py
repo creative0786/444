@@ -997,10 +997,10 @@ BINCODES_API_KEY=your_bincodes_api_key_here
 ### 2. Files Structure
 
 
-project/
+project
 bot.py
 requirements.txt
-```
+
 
 ### 3. Deploy Steps
 
