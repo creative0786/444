@@ -3,7 +3,7 @@
   "build": {
     "builder": "RAILPACK"
   },
-  "deploy":pip show python-telegram-bot
+  "deploy":
  {
     "runtime": "V2",
     "numReplicas": 1,
