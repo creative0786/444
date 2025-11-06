@@ -1045,15 +1045,15 @@ requirements.txt
 
 ## Features
 
-✅ **CC Killer** - Check if cards are Live or Dead
-✅ **CC Scraper** - Extract valid cards from text
-✅ **Mass Checker** - Check multiple cards at once
-✅ **Fake Address Generator** - Generate addresses for 7+ countries
-✅ **Admin Full Monitoring** - All user data visible to admin (keys, cards, activities)
-✅ **Pre-loaded Proxies** - 20 working proxies
-✅ **Pre-loaded Sites** - 8 Shopify stores
-✅ **BIN Lookup** - Using BinCodes API
-✅ **Card Generator** - Luhn validated cards
+ **CC Killer** - Check if cards are Live or Dead
+ **CC Scraper** - Extract valid cards from text
+ **Mass Checker** - Check multiple cards at once
+ **Fake Address Generator** - Generate addresses for 7+ countries
+ **Admin Full Monitoring** - All user data visible to admin (keys, cards, activities)
+ **Pre-loaded Proxies** - 20 working proxies
+ **Pre-loaded Sites** - 8 Shopify stores
+ **BIN Lookup** - Using BinCodes API
+ **Card Generator** - Luhn validated cards
 
 ---
 
