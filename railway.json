@@ -3,12 +3,23 @@
   "build": {
     "builder": "NIXPACKS",
     "buildCommand": "echo building!"
-    },
+  },
   "deploy": {
-    "preDeployCommand": ["npm run db:migrate"],
+    "runtime": "V2",
+    "numReplicas": 1,
     "startCommand": "echo starting!",
     "healthcheckPath": "/",
-    "healthcheckTimeout": 100,
-    "restartPolicyType": "never"
-    }
+    "preDeployCommand": [
+      "npm run db:migrate"
+    ],
+    "sleepApplication": false,
+    "useLegacyStacker": false,
+    "multiRegionConfig": {
+      "us-west2": {
+        "numReplicas": 1
+      }
+    },
+    "restartPolicyType": "NEVER",
+    "healthcheckTimeout": 100
+  }
 }
