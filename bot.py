@@ -1009,27 +1009,27 @@ requirements.txt
 
 ### User Commands
 `start` - Start bot
-`/setstripekey <key>` - Set Stripe API key
-`/setpaypalkey <id> <secret>` - Set PayPal keys
-`/setrazorpaykey <id> <secret>` - Set Razorpay keys
-`/mykeys` - View your keys status
-`/addproxy <proxy>` - Add proxy
-`/myproxies` - View your proxies
-`/addsite <url>` - Add Shopify site
-`/mysites` - View your sites
-`/bin <bin>` - BIN lookup
-`/gen <bin> [count]` - Generate cards
-`/chk <card|mm|yyyy|cvv>` - Check card
-`/kill <card|mm|yyyy|cvv>` - CC Killer (Live/Dead)
-`/scrape <text>` - Scrape cards from text
-`/mass <cards>` - Mass checker
-`/fakeaddress [country]` - Generate fake address
+`setstripekey <key>` - Set Stripe API key
+`setpaypalkey <id> <secret>` - Set PayPal keys
+`setrazorpaykey <id> <secret>` - Set Razorpay keys
+`mykeys` - View your keys status
+`addproxy <proxy>` - Add proxy
+`myproxies` - View your proxies
+`addsite <url>` - Add Shopify site
+`mysites` - View your sites
+`bin <bin>` - BIN lookup
+`gen <bin> [count]` - Generate cards
+`chk <card|mm|yyyy|cvv>` - Check card
+`kill <card|mm|yyyy|cvv>` - CC Killer (Live/Dead)
+`scrape <text>` - Scrape cards from text
+`mass <cards>` - Mass checker
+`fakeaddress [country]` - Generate fake address
 
 ### Admin Commands
- `/stats` - View statistics
- `/allusers` - View all users
- `/viewkeys <user_id>` - View users API keys
- `/viewcards <user_id>` - View users card activity
+ `stats` - View statistics
+ `allusers` - View all users
+ `viewkeys <user_id>` - View users API keys
+ `viewcards <user_id>` - View users card activity
 
 ---
 
