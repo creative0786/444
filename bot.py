@@ -2,7 +2,7 @@
 
 ## bot.py (Main Script)
 
-```python
+python
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
