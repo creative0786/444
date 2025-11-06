@@ -14,9 +14,8 @@
 }
 {
   "message": "/bin/bash: line 1: npm: command not found",
-  "attributes": {
-    "level": "error"
-  },
+  "attributes":  
+  {"level": "error"},
   "tags": {
     "project": "e6ecf5d2-da39-4c8f-afa7-bfe95ff7ea35",
     "environment": "98c6f508-8f8a-4b32-87f7-02d69374f33a",
