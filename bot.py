@@ -1038,8 +1038,8 @@ requirements.txt
 ### Admin Commands
 - `/stats` - View statistics
 - `/allusers` - View all users
-- `/viewkeys <user_id>` - View user's API keys
-- `/viewcards <user_id>` - View user's card activity
+- `/viewkeys <user_id>` - View users API keys
+- `/viewcards <user_id>` - View users card activity
 
 ---
 
