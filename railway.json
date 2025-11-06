@@ -6,6 +6,7 @@
   "deploy": {
     "runtime": "V2",
     "numReplicas": 1,
+    "startCommand": "python bot.py",
     "sleepApplication": false,
     "useLegacyStacker": false,
     "multiRegionConfig": {
@@ -17,3 +18,4 @@
     "restartPolicyMaxRetries": 10
   }
 }
+
