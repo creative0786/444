@@ -1000,7 +1000,7 @@ BINCODES_API_KEY=your_bincodes_api_key_here
 
 ```
 project/
-├── bot.py
+bot.py
 └── requirements.txt
 ```
 
