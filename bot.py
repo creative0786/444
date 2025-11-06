@@ -973,28 +973,27 @@ def main():
 
 if __name__ == '__main__':
     main()
-```
 
----
+
 
 ## requirements.txt
 
-```
+
 python-telegram-bot==20.7
 aiohttp==3.9.1
-```
 
----
+
+
 
 ## Railway Deployment Guide
 
 ### 1. Environment Variables (सेट करें Railway में)
 
-```
+
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 ADMIN_USER_ID=729412805
 BINCODES_API_KEY=your_bincodes_api_key_here
-```
+
 
 ### 2. Files Structure
 
@@ -1044,8 +1043,7 @@ requirements.txt
 ---
 
 ## Features
-
- **CC Killer** - Check if cards are Live or Dead
+    **CC Killer** - Check if cards are Live or Dead
  **CC Scraper** - Extract valid cards from text
  **Mass Checker** - Check multiple cards at once
  **Fake Address Generator** - Generate addresses for 7+ countries
