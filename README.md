@@ -7,3 +7,5 @@ git remote add origin https://github.com/creative0786/111.git
 git push -u orgit remote add origin https://github.com/creative0786/111.git
 git branch -M main
 git push -u origin mainigin main
+pip install python-telegram-bot aiohttp playwright
+playwright install
