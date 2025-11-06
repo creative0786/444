@@ -991,9 +991,10 @@ aiohttp==3.9.1
 ### 1. Environment Variables (सेट करें Railway में)
 
 ```
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+TELEGRAM_BOT_TOKEN=8497098081:AAFNQzwZxn-7vhTnR0d5fEUmvzDuQ4UEpGk
 ADMIN_USER_ID=729412805
-BINCODES_API_KEY=your_bincodes_api_key_here
+BINCODES_API_KEY=425be7cdecc63d7a92ebe8e9bc6773a0
+
 ```
 
 ### 2. Files Structure
