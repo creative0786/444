@@ -31,9 +31,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============= CONFIGURATION =============
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_BOT_TOKEN = os.getenv("8497098081:AAFNQzwZxn-7vhTnR0d5fEUmvzDuQ4UEpGk")
 ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "729412805"))
-BINCODES_API_KEY = os.getenv("BINCODES_API_KEY")
+BINCODES_API_KEY = os.getenv("425be7cdecc63d7a92ebe8e9bc6773a0")
 
 # Data stores
 user_api_keys = {}
