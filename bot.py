@@ -1008,7 +1008,7 @@ requirements.txt
 ## Commands List
 
 ### User Commands
-`/start` - Start bot
+`start` - Start bot
 `/setstripekey <key>` - Set Stripe API key
 `/setpaypalkey <id> <secret>` - Set PayPal keys
 `/setrazorpaykey <id> <secret>` - Set Razorpay keys
