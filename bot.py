@@ -1057,4 +1057,4 @@ requirements.txt
 
 ---
 
-**यह complete production-ready bot है! Railway पर deploy करें और enjoy करें!** 🚀
+**यह complete production-ready bot है! Railway पर deploy करें और enjoy करें!** 
