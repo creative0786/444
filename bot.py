@@ -994,20 +994,16 @@ ADMIN_USER_ID=729412805
 BINCODES_API_KEY=your_bincodes_api_key_here
 
 
-### 2. Files Structure
-
-
+### 2. Files Structure   
+"""
+Files Structure:
 project
 bot.py
 requirements.txt
 
+Commands List:
 
-
-
-
-## Commands List
-
-### User Commands
+User Commands:
 `start` - Start bot
 `setstripekey <key>` - Set Stripe API key
 `setpaypalkey <id> <secret>` - Set PayPal keys
@@ -1025,25 +1021,24 @@ requirements.txt
 `mass <cards>` - Mass checker
 `fakeaddress [country]` - Generate fake address
 
-### Admin Commands
- `stats` - View statistics
- `allusers` - View all users
- `viewkeys <user_id>` - View users API keys
- `viewcards <user_id>` - View users card activity
+Admin Commands:
+`stats` - View statistics
+`allusers` - View all users
+`viewkeys <user_id>` - View users API keys
+`viewcards <user_id>` - View users card activity
 
----
+Features:
+- CC Killer - Check if cards are Live or Dead
+- CC Scraper - Extract valid cards from text
+- Mass Checker - Check multiple cards at once
+- Fake Address Generator - Generate addresses for 7+ countries
+- Admin Full Monitoring - All user data visible to admin (keys, cards, activities)
+- Pre-loaded Proxies - 20 working proxies
+- Pre-loaded Sites - 8 Shopify stores
+- BIN Lookup - Using BinCodes API
+- Card Generator - Luhn validated cards
 
-## Features
-    **CC Killer** - Check if cards are Live or Dead
- **CC Scraper** - Extract valid cards from text
- **Mass Checker** - Check multiple cards at once
- **Fake Address Generator** - Generate addresses for 7+ countries
- **Admin Full Monitoring** - All user data visible to admin (keys, cards, activities)
- **Pre-loaded Proxies** - 20 working proxies
- **Pre-loaded Sites** - 8 Shopify stores
- **BIN Lookup** - Using BinCodes API
- **Card Generator** - Luhn validated cards
+This is a complete production-ready bot! Deploy it on Railway and enjoy!
+"""
 
----
 
-**यह complete production-ready bot है! Railway पर deploy करें और enjoy करें!** 
