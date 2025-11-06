@@ -1002,16 +1002,8 @@ bot.py
 requirements.txt
 
 
-### 3. Deploy Steps
 
-1. GitHub repo में upload करें
-2. Railway पर New Project बनाएँ
-3. Deploy from GitHub repo
-4. Environment Variables add करें
-5. Deploy करें
-6. Logs में देखें: "🚀 Bot started polling..."
 
----
 
 ## Commands List
 
