@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = os.getenv("8497098081:AAFNQzwZxn-7vhTnR0d5fEUmvzDuQ4UEpGk")
 ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "729412805"))
-BINCODES_API_KEY = os.getenv("BINCODES_API_KEY""425be7cdecc63d7a92ebe8e9bc6773a0")
+BINCODES_API_KEY = os.getenv("425be7cdecc63d7a92ebe8e9bc6773a0")
 BOT_VERSION = "3.0"
 
 # Store user data separately for privacy
