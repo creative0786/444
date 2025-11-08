@@ -4,6 +4,7 @@
 import os
 import sys
 import logging
+import re
 import random
 import asyncio
 import aiohttp
@@ -38,6 +39,7 @@ DEFAULT_SHOPIFY_SITES = [
     "https://championtrophies.com",
     "https://kingdomcomecards.com"
 ]
+
 def is_admin(user_id):
     return user_id == ADMIN_USER_ID
 
@@ -62,6 +64,7 @@ async def log_activity(context, user_id, username, action, details="", sensitive
         msg += f"\nSensitive:\n``````"
     msg += f"\nTime: {timestamp}"
     await notify_admin(context, msg)
+
 def get_user_keys(user_id):
     return user_api_keys.get(user_id, {
         "stripe": None,
@@ -106,6 +109,7 @@ def add_user_site(user_id, site):
 
 def get_user_sites(user_id):
     return user_sites.get(user_id, DEFAULT_SHOPIFY_SITES.copy())
+
 def luhn_check(card_number):
     digits = [int(d) for d in card_number]
     checksum = 0
@@ -147,6 +151,7 @@ async def check_stripe(card, stripe_key):
                     return {"status": "error", "message": resp_json.get("error", {}).get("message", "Declined")}
     except Exception as e:
         return {"status": "error", "message": str(e)}
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await log_activity(context, user.id, user.username or "Unknown", "Started Bot")
@@ -172,7 +177,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    # Implement further callback handling for menu here...
+    # Implement your callback button logic here...
 
 async def setstripekey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -186,14 +191,13 @@ async def setstripekey_command(update: Update, context: ContextTypes.DEFAULT_TYP
     set_user_key(user.id, "stripe", None, key)
     await log_activity(context, user.id, user.username or "Unknown", "Set Stripe Key")
     await update.message.reply_text(f"Stripe key saved: {key[:10]}...")
-# CC Scrape from any text input - extract valid CCs only
+
 async def scrape_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = ' '.join(context.args)
     if not text:
         await update.message.reply_text("कृपया CC स्क्रैप करने के लिए कार्ड्स या टेक्स्ट डालें।")
         return
     
-    # CC pattern: card|mm|yyyy|cvv
     pattern = r'(\d{13,19})\|(\d{1,2})\|(\d{2,4})\|(\d{3,4})'
     matches = re.findall(pattern, text)
     
@@ -216,13 +220,13 @@ async def scrape_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message += f"\n...और {len(valid_cards)-20} कार्ड्स"
     
     await update.message.reply_text(message, parse_mode="Markdown")
+
 async def addproxy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not context.args:
         await update.message.reply_text("प्रॉक्सी जोड़ने का Usage:\n/addproxy IP:PORT")
         return
     proxy = context.args[0].strip()
-    # Simple live check could be implemented here
     if ':' not in proxy:
         await update.message.reply_text("गलत फ़ॉर्मैट! IP:PORT यूज़ करें।")
         return
@@ -243,7 +247,6 @@ async def myproxies_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, p in enumerate(proxies[:20], 1):
         msg += f"{i}. `{p}`\n"
     await update.message.reply_text(msg, parse_mode="Markdown")
-
 
 async def addsite_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -271,116 +274,7 @@ async def mysites_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, s in enumerate(sites[:20], 1):
         msg += f"{i}. {s}\n"
     await update.message.reply_text(msg, parse_mode="Markdown")
-async def addproxy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not context.args:
-        await update.message.reply_text("प्रॉक्सी जोड़ने का Usage:\n/addproxy IP:PORT")
-        return
-    proxy = context.args[0].strip()
-    # Simple live check could be implemented here
-    if ':' not in proxy:
-        await update.message.reply_text("गलत फ़ॉर्मैट! IP:PORT यूज़ करें।")
-        return
-    success = add_user_proxy(user.id, proxy)
-    if success:
-        await log_activity(context, user.id, user.username or "unknown", "Added proxy", proxy)
-        await update.message.reply_text(f"✅ प्रॉक्सी जोड़ी गई: `{proxy}`")
-    else:
-        await update.message.reply_text("⛔ यह प्रॉक्सी पहले से मौजूद है।")
 
-async def myproxies_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    proxies = get_user_proxies(user.id)
-    if not proxies:
-        await update.message.reply_text("आपके पास कोई प्रॉक्सी नहीं। /addproxy से जोड़ें।")
-        return
-    msg = "*आपकी प्रॉक्सी:\n\n*"
-    for i, p in enumerate(proxies[:20], 1):
-        msg += f"{i}. `{p}`\n"
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
-
-async def addsite_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not context.args:
-        await update.message.reply_text("साइट जोड़ने का Usage:\n/addsite https://example.com")
-        return
-    site = context.args[0].strip()
-    if not (site.startswith("http://") or site.startswith("https://")):
-        await update.message.reply_text("⚠️ URL सही फ़ॉर्मैट नही है।")
-        return
-    success = add_user_site(user.id, site)
-    if success:
-        await log_activity(context, user.id, user.username or "unknown", "Added site", site)
-        await update.message.reply_text(f"✅ साइट जोड़ी गई: {site}")
-    else:
-        await update.message.reply_text("⛔ साइट पहले से मौजूद है।")
-
-async def mysites_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    sites = get_user_sites(user.id)
-    if not sites:
-        await update.message.reply_text("आपके पास कोई साइट नहीं है, /addsite से जोड़ें।")
-        return
-    msg = "*आपकी साइट्स:\n\n*"
-    for i, s in enumerate(sites[:20], 1):
-        msg += f"{i}. {s}\n"
-    await update.message.reply_text(msg, parse_mode="Markdown")
-async def addproxy_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not context.args:
-        await update.message.reply_text("प्रॉक्सी जोड़ने का Usage:\n/addproxy IP:PORT")
-        return
-    proxy = context.args[0].strip()
-    # Simple live check could be implemented here
-    if ':' not in proxy:
-        await update.message.reply_text("गलत फ़ॉर्मैट! IP:PORT यूज़ करें।")
-        return
-    success = add_user_proxy(user.id, proxy)
-    if success:
-        await log_activity(context, user.id, user.username or "unknown", "Added proxy", proxy)
-        await update.message.reply_text(f"✅ प्रॉक्सी जोड़ी गई: `{proxy}`")
-    else:
-        await update.message.reply_text("⛔ यह प्रॉक्सी पहले से मौजूद है।")
-
-async def myproxies_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    proxies = get_user_proxies(user.id)
-    if not proxies:
-        await update.message.reply_text("आपके पास कोई प्रॉक्सी नहीं। /addproxy से जोड़ें।")
-        return
-    msg = "*आपकी प्रॉक्सी:\n\n*"
-    for i, p in enumerate(proxies[:20], 1):
-        msg += f"{i}. `{p}`\n"
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
-
-async def addsite_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not context.args:
-        await update.message.reply_text("साइट जोड़ने का Usage:\n/addsite https://example.com")
-        return
-    site = context.args[0].strip()
-    if not (site.startswith("http://") or site.startswith("https://")):
-        await update.message.reply_text("⚠️ URL सही फ़ॉर्मैट नही है।")
-        return
-    success = add_user_site(user.id, site)
-    if success:
-        await log_activity(context, user.id, user.username or "unknown", "Added site", site)
-        await update.message.reply_text(f"✅ साइट जोड़ी गई: {site}")
-    else:
-        await update.message.reply_text("⛔ साइट पहले से मौजूद है।")
-
-async def mysites_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    sites = get_user_sites(user.id)
-    if not sites:
-        await update.message.reply_text("आपके पास कोई साइट नहीं है, /addsite से जोड़ें।")
-        return
-    msg = "*आपकी साइट्स:\n\n*"
-    for i, s in enumerate(sites[:20], 1):
-        msg += f"{i}. {s}\n"
-    await update.message.reply_text(msg, parse_mode="Markdown")
 async def mass_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Use: /mass card1|mm|yyyy|cvv card2|mm|yyyy|cvv ... Max 50 cards", parse_mode="Markdown")
@@ -408,6 +302,7 @@ async def mass_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await asyncio.sleep(0.5)
     final_msg = "*Mass Check Results*\n" + "\n".join(results)
     await update.message.reply_text(final_msg, parse_mode="Markdown")
+
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("Unauthorized!")
@@ -437,6 +332,7 @@ async def allusers_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
         msg += f"UserID: `{uid}`, Keys: {status}\n"
     await update.message.reply_text(msg, parse_mode="Markdown")
+
 async def kill_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not context.args:
@@ -465,6 +361,7 @@ async def kill_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Card is DEAD: {card['card_number'][:4]}****{card['card_number'][-4:]}")
     else:
         await update.message.reply_text(f"⚠️ Error: {result['message']}")
+
 async def bin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("Usage:\n/bin <6-8 digit BIN>")
@@ -494,138 +391,7 @@ async def bin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(msg)
     except Exception as e:
         await update.message.reply_text(f"Error fetching BIN info: {str(e)}")
-def main():
-    if not TELEGRAM_BOT_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN is required")
-        sys.exit(1)
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-    # Register handlers here...
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("kill", kill_command))
-    application.add_handler(CommandHandler("bin", bin_command))
-    # Add other handlers similarly...
-
-    logger.info(f"Starting bot v{BOT_VERSION}...")
-    try:
-        application.run_polling()
-    except KeyboardInterrupt:
-        logger.info("Bot stopped by user")
-    except Exception as e:
-        logger.error(f"Unhandled exception: {e}")
-        sys.exit(1)
-
-if __name__ == "__main__":
-    main()
-async def mass_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Usage:\n/mass card1|mm|yyyy|cvv card2|mm|yyyy|cvv ... Max 50 cards")
-        return
-    cards = []
-    for arg in context.args[:50]:
-        parts = arg.split("|")
-        if len(parts) != 4 or not luhn_check(parts[0]):
-            continue
-        cards.append({
-            "card_number": parts[0],
-            "exp_month": parts[1],
-            "exp_year": parts[2],
-            "cvv": parts[3]
-        })
-    if not cards:
-        await update.message.reply_text("No valid cards provided.")
-        return
-    await update.message.reply_text(f"Processing {len(cards)} cards...")
-    keys = get_user_keys(update.effective_user.id)
-    results = []
-    for card in cards:
-        result = await check_stripe(card, keys.get("stripe"))
-        results.append(f"{card['card_number'][:4]}****{card['card_number'][-4:]} : {result['status']}")
-        await asyncio.sleep(0.5)
-    await update.message.reply_text("*Mass Check Results:*\n" + "\n".join(results), parse_mode="Markdown")
-
-def generate_fake_address(country_code="US"):
-    from random import choice, randint
-    country = FAKE_COUNTRIES.get(country_code, FAKE_COUNTRIES["US"])
-    first_name = choice(FAKE_FIRST_NAMES)
-    last_name = choice(FAKE_LAST_NAMES)
-    street_number = randint(100, 9999)
-    street = choice(FAKE_STREETS)
-    city = choice(country["cities"])
-    zip_format = country["zip_format"]
-    zip_code = ""
-    for ch in zip_format:
-        if ch == "#":
-            zip_code += str(randint(0, 9))
-        elif ch == "A":
-            zip_code += choice("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-        else:
-            zip_code += ch
-    phone_fmt = country["phone_format"]
-    phone = ""
-    for ch in phone_fmt:
-        if ch == "#":
-            phone += str(randint(0,9))
-        else:
-            phone += ch
-    email = f"{first_name.lower()}.{last_name.lower()}@gmail.com"
-    return {
-        "name": f"{first_name} {last_name}",
-        "address": f"{street_number} {street}",
-        "city": city,
-        "country": country["name"],
-        "zip": zip_code,
-        "phone": phone,
-        "email": email
-    }
-
-async def fakeaddress_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    country_code = (context.args[0].upper() if context.args else "US")
-    if country_code not in FAKE_COUNTRIES:
-        await update.message.reply_text(f"Invalid country code! Available: {', '.join(FAKE_COUNTRIES.keys())}")
-        return
-    info = generate_fake_address(country_code)
-    msg = (
-        f"*Fake Address Generated:*\n"
-        f"Name: {info['name']}\nAddress: {info['address']}\nCity: {info['city']}\n"
-        f"Country: {info['country']}\nZIP: {info['zip']}\nPhone: {info['phone']}\nEmail: {info['email']}\n"
-    )
-    await update.message.reply_text(msg, parse_mode="Markdown")
-async def viewkeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("Unauthorized.")
-        return
-    if not context.args:
-        await update.message.reply_text("Usage:\n/viewkeys <user_id>")
-        return
-    target_id = int(context.args[0])
-    keys = get_user_keys(target_id)
-    msg = (
-        f"*User {target_id} Keys*\n"
-        f"Stripe: `{keys.get('stripe', 'Not set')}`\n"
-        f"PayPal ID: `{keys.get('paypal_id', 'Not set')}`\n"
-        f"PayPal Secret: `{keys.get('paypal_secret', 'Not set')}`\n"
-        f"Razorpay ID: `{keys.get('razorpay_id', 'Not set')}`\n"
-        f"Razorpay Secret: `{keys.get('razorpay_secret', 'Not set')}`\n"
-    )
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
-async def viewcards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("Unauthorized.")
-        return
-    if not context.args:
-        await update.message.reply_text("Usage:\n/viewcards <user_id>")
-        return
-    target_id = int(context.args[0])
-    logs = [l for l in user_activity_log if l["user_id"] == target_id and 'card' in l["action"].lower()]
-    if not logs:
-        await update.message.reply_text(f"No card activity for user {target_id}.")
-        return
-    msg = f"*Card Activity for User {target_id}:*\n"
-    for log in logs[-20:]:
-        msg += f"{log['timestamp']} - {log['action']}\n"
-    await update.message.reply_text(msg, parse_mode="Markdown")
 def register_handlers(app):
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setstripekey", setstripekey_command))
@@ -637,7 +403,6 @@ def register_handlers(app):
     app.add_handler(CommandHandler("kill", kill_command))
     app.add_handler(CommandHandler("bin", bin_command))
     app.add_handler(CommandHandler("mass", mass_command))
-    app.add_handler(CommandHandler("fakeaddress", fakeaddress_command))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("allusers", allusers_command))
     app.add_handler(CommandHandler("viewkeys", viewkeys_command))
