@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 # Adapted from https://github.com/starship/starship/blob/master/install/install.sh
-
+$ python -m venv /app/.venv
+$ pip install -r requirements.txt
 help_text="Options
 
    -V, --verbose
