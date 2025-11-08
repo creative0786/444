@@ -152,7 +152,6 @@ async def check_stripe(card, stripe_key):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    logger.info(f"/start command by user {user.id} @{user.username}")
     await log_activity(context, user.id, user.username or "Unknown", "Started Bot")
     if user.id not in user_proxies:
         user_proxies[user.id] = DEFAULT_PROXIES.copy()
@@ -160,9 +159,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_sites[user.id] = DEFAULT_SHOPIFY_SITES.copy()
 
     keyboard = [
-        [InlineKeyboardButton("Set Keys", callback_data="keys"), InlineKeyboardButton("Commands", callback_data="commands")],
-        [InlineKeyboardButton("Proxies", callback_data="proxies"), InlineKeyboardButton("Sites", callback_data="sites")],
-        [InlineKeyboardButton("Check Card", callback_data="check"), InlineKeyboardButton("BIN Lookup", callback_data="bin")],
+        [InlineKeyboardButton("Set Keys", callback_data="keys"),
+         InlineKeyboardButton("Commands", callback_data="commands")],
+        [InlineKeyboardButton("Proxies", callback_data="proxies"),
+         InlineKeyboardButton("Sites", callback_data="sites")],
+        [InlineKeyboardButton("Check Card", callback_data="check"),
+         InlineKeyboardButton("BIN Lookup", callback_data="bin")],
     ]
     if is_admin(user.id):
         keyboard.append([InlineKeyboardButton("Admin Panel", callback_data="admin")])
@@ -170,17 +172,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"*CC Checker Bot v{BOT_VERSION}*\nWelcome {user.first_name}!\nID: `{user.id}`",
         parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    # Further callback handling logic here...
+    # Implement further callback handling here
 
+# Example command - implement other commands similarly with logging and replies
 async def setstripekey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    logger.info(f"/setstripekey called by {user.id} @{user.username} with args: {context.args}")
+    await log_activity(context, user.id, user.username or "Unknown", "Set Stripe Key Command Called")
     if not context.args:
         await update.message.reply_text("Use /setstripekey <key>")
         return
@@ -189,22 +192,20 @@ async def setstripekey_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("Invalid key: Must start with sk_")
         return
     set_user_key(user.id, "stripe", None, key)
-    await log_activity(context, user.id, user.username or "Unknown", "Set Stripe Key")
     await update.message.reply_text(f"Stripe key saved: {key[:10]}...")
 
-# Place all other command implementations here following the above structure.
+# Add other command implementations (scrape, proxies, sites, kill, mass, bin, stats, allusers, viewkeys, viewcards, etc.) here following the above pattern
 
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info(f"/test called by {update.effective_user.id}")
     await update.message.reply_text("Test command works!")
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    logger.error(f"Exception while handling update: {context.error}")
+    logger.error(msg='Exception while handling an update:', exc_info=context.error)
     try:
         if update and hasattr(update, 'message') and update.message:
-            await update.message.reply_text("An unexpected error occurred, please try again later.")
+            await update.message.reply_text("An unexpected error occurred. Please try again later.")
     except Exception as e:
-        logger.error(f"Error sending error message: {e}")
+        logger.error(f"Failed to send error message: {e}")
 
 async def cleanup_webhook():
     async with aiohttp.ClientSession() as session:
@@ -213,24 +214,29 @@ async def cleanup_webhook():
             if resp.status == 200:
                 logger.info("Webhook cleared successfully on startup.")
             else:
-                logger.warning(f"Failed to clear webhook on startup with status {resp.status}")
+                logger.warning(f"Failed to clear webhook on startup, status: {resp.status}")
 
 def register_handlers(app):
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setstripekey", setstripekey_command))
     app.add_handler(CommandHandler("test", test_command))
-    app.add_handler(CallbackQueryHandler(button_callback))  
+    # Register all other command handlers here
+    app.add_handler(CallbackQueryHandler(button_callback))
     app.add_error_handler(error_handler)
-    # Register other CommandHandlers here
 
 async def main_async():
     await cleanup_webhook()
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     register_handlers(application)
-    logger.info(f"Starting bot version {BOT_VERSION}")
+    logger.info(f"Starting bot v{BOT_VERSION}")
     await application.run_polling()
 
 def main():
+    try:
+        import nest_asyncio
+        nest_asyncio.apply()
+    except ImportError:
+        pass
     try:
         asyncio.run(main_async())
     except KeyboardInterrupt:
