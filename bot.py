@@ -175,8 +175,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
-    # Implement further callback handling for menu here...
+    data = query.data
+    await query.answer()  # Acknowledge callback so button doesn't show loading
+
+    if data == "keys":
+        await query.message.reply_text("You clicked: Set Keys")
+    elif data == "commands":
+        await query.message.reply_text("You clicked: Commands")
+    elif data == "proxies":
+        await query.message.reply_text("You clicked: Proxies")
+    elif data == "sites":
+        await query.message.reply_text("You clicked: Sites")
+    elif data == "check":
+        await query.message.reply_text("You clicked: Check Card")
+    elif data == "bin":
+        await query.message.reply_text("You clicked: BIN Lookup")
+    elif data == "admin" and is_admin(query.from_user.id):
+        await query.message.reply_text("Admin Panel")
+    else:
+        await query.message.reply_text("Unknown button clicked.")
 
 async def setstripekey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -191,14 +208,12 @@ async def setstripekey_command(update: Update, context: ContextTypes.DEFAULT_TYP
     await log_activity(context, user.id, user.username or "Unknown", "Set Stripe Key")
     await update.message.reply_text(f"Stripe key saved: {key[:10]}...")
 
-# CC Scrape from any text input - extract valid CCs only
 async def scrape_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = ' '.join(context.args)
     if not text:
         await update.message.reply_text("कृपया CC स्क्रैप करने के लिए कार्ड्स या टेक्स्ट डालें।")
         return
     
-    # CC pattern: card|mm|yyyy|cvv
     pattern = r'(\d{13,19})\|(\d{1,2})\|(\d{2,4})\|(\d{3,4})'
     matches = re.findall(pattern, text)
     
@@ -393,55 +408,6 @@ async def bin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Error fetching BIN info: {str(e)}")
 
-async def fakeaddress_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    country_code = (context.args[0].upper() if context.args else "US")
-    if country_code not in FAKE_COUNTRIES:
-        await update.message.reply_text(f"Invalid country code! Available: {', '.join(FAKE_COUNTRIES.keys())}")
-        return
-    info = generate_fake_address(country_code)
-    msg = (
-        f"*Fake Address Generated:*\n"
-        f"Name: {info['name']}\nAddress: {info['address']}\nCity: {info['city']}\n"
-        f"Country: {info['country']}\nZIP: {info['zip']}\nPhone: {info['phone']}\nEmail: {info['email']}\n"
-    )
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
-async def viewkeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("Unauthorized.")
-        return
-    if not context.args:
-        await update.message.reply_text("Usage:\n/viewkeys <user_id>")
-        return
-    target_id = int(context.args[0])
-    keys = get_user_keys(target_id)
-    msg = (
-        f"*User {target_id} Keys*\n"
-        f"Stripe: `{keys.get('stripe', 'Not set')}`\n"
-        f"PayPal ID: `{keys.get('paypal_id', 'Not set')}`\n"
-        f"PayPal Secret: `{keys.get('paypal_secret', 'Not set')}`\n"
-        f"Razorpay ID: `{keys.get('razorpay_id', 'Not set')}`\n"
-        f"Razorpay Secret: `{keys.get('razorpay_secret', 'Not set')}`\n"
-    )
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
-async def viewcards_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("Unauthorized.")
-        return
-    if not context.args:
-        await update.message.reply_text("Usage:\n/viewcards <user_id>")
-        return
-    target_id = int(context.args[0])
-    logs = [l for l in user_activity_log if l["user_id"] == target_id and 'card' in l["action"].lower()]
-    if not logs:
-        await update.message.reply_text(f"No card activity for user {target_id}.")
-        return
-    msg = f"*Card Activity for User {target_id}:*\n"
-    for log in logs[-20:]:
-        msg += f"{log['timestamp']} - {log['action']}\n"
-    await update.message.reply_text(msg, parse_mode="Markdown")
-
 def register_handlers(app):
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setstripekey", setstripekey_command))
@@ -453,7 +419,6 @@ def register_handlers(app):
     app.add_handler(CommandHandler("kill", kill_command))
     app.add_handler(CommandHandler("bin", bin_command))
     app.add_handler(CommandHandler("mass", mass_command))
-    app.add_handler(CommandHandler("fakeaddress", fakeaddress_command))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("allusers", allusers_command))
     app.add_handler(CommandHandler("viewkeys", viewkeys_command))
@@ -478,3 +443,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
