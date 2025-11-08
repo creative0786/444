@@ -1,4 +1,4 @@
 python-telegram-bot==3.13.9
 aiohttp
 playwright
-pip install -r requirements.txt
+install requirements.txt
