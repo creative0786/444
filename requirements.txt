@@ -1,4 +1,4 @@
-pip install python-telegram-bot==22
+pip install python-telegram-bot==22.1
 requests
 aiohttp
 playwright
