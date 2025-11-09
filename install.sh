@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Adapted from https://github.com/starship/starship/blob/master/install/install.sh           
-$ pip install --upgrade python-telegram-bot
+$ pip install -r requirements.txt
 $ python -m venv /app/.venv
 help_text="Options
 
