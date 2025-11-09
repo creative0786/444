@@ -1,4 +1,4 @@
-pip install --upgrade python-telegram-bot
+python-telegram-bot
 requests
 aiohttp
 playwright
