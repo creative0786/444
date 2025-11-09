@@ -3,7 +3,6 @@
 # Adapted from https://github.com/starship/starship/blob/master/install/install.sh           
 $ pip install -r requirements.txt
 $ python -m venv /app/.venv
-$ pip install -r requirements.txt
 help_text="Options
 
    -V, --verbose
