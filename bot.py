@@ -192,6 +192,5 @@ def button_callback(update, context):
         query.message.reply_text("You clicked: Check Card")
     elif data == "bin":
         query.message.reply_text("You clicked: BIN Lookup")
-    elif data
-
+    elif data == "admin":
 
