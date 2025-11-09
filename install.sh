@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Adapted from https://github.com/starship/starship/blob/master/install/install.sh           
-$ pip install -r requirements.txt
+$ python-telegram-bot==3.13.9
 $ python -m venv /app/.venv
 help_text="Options
 
