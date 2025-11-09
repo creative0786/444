@@ -1,3 +1,3 @@
-pip install -r python-telegram-bot==3.13.9
+pip python-telegram-bot==3.13.9
 aiohttp
 playwright
