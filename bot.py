@@ -193,4 +193,7 @@ def button_callback(update, context):
     elif data == "bin":
         query.message.reply_text("You clicked: BIN Lookup")
     elif data == "admin":
+        query.message.reply_text("Admin Panel")
+    else:
+        query.message.reply_text("Unknown button clicked.")
 
