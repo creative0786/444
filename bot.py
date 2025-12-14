@@ -186,6 +186,62 @@ async def shopify_checkout_simulation(card, month, year, cvv, site_url, proxy=No
     except Exception as e:
         return {"success": False, "message": str(e)}
 
+# PayPal sandbox helpers (OAuth, create order, capture)
+async def get_paypal_token(client_id, client_secret):
+    """Get OAuth token from PayPal sandbox."""
+    if not client_id or not client_secret:
+        return {"success": False, "error": "PayPal client id/secret not set"}
+    url = "https://api-m.sandbox.paypal.com/v1/oauth2/token"
+    auth = aiohttp.BasicAuth(client_id, client_secret)
+    async with aiohttp.ClientSession() as session:
+        try:
+            data = {"grant_type": "client_credentials"}
+            async with session.post(url, data=data, auth=auth, timeout=10) as resp:
+                text = await resp.text()
+                if resp.status != 200:
+                    return {"success": False, "error": f"Auth failed (HTTP {resp.status}): {text}"}
+                j = await resp.json()
+                return {"success": True, "access_token": j.get("access_token"), "expires_in": j.get("expires_in")}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+async def create_paypal_order(access_token, amount="1.00", currency="USD"):
+    """Create a PayPal order (sandbox). Returns order JSON."""
+    url = "https://api-m.sandbox.paypal.com/v2/checkout/orders"
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"}
+    payload = {
+        "intent": "CAPTURE",
+        "purchase_units": [{"amount": {"currency_code": currency, "value": amount}}],
+        "application_context": {
+            "brand_name": "Telegram Bot Sandbox",
+            "landing_page": "NO_PREFERENCE",
+            "user_action": "PAY_NOW"
+        }
+    }
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(url, json=payload, headers=headers, timeout=10) as resp:
+                j = await resp.json()
+                if resp.status in (201, 200):
+                    return {"success": True, "order": j}
+                return {"success": False, "error": j}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+async def capture_paypal_order(access_token, order_id):
+    """Capture an approved order."""
+    url = f"https://api-m.sandbox.paypal.com/v2/checkout/orders/{order_id}/capture"
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"}
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(url, headers=headers, timeout=10) as resp:
+                j = await resp.json()
+                if resp.status in (200, 201):
+                    return {"success": True, "capture": j}
+                return {"success": False, "error": j}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
 # Telegram command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -202,6 +258,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/scrape <cc data>\n"
         "/stripecheck <card|mm|yyyy|cvv>\n"
         "/paypalcheck <card|mm|yyyy|cvv>\n"
+        "/paypal_create <amount>  <-- Create PayPal sandbox order and get approval link\n"
+        "/paypal_capture <order_id>  <-- Capture an approved sandbox order\n"
         "/checkout <card|mm|yyyy|cvv>\n"
         "/addproxy <ip:port>\n"
         "/myproxies\n"
@@ -233,7 +291,7 @@ async def setkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         set_user_key(user.id, "paypal", "id", args[1])
         set_user_key(user.id, "paypal", "secret", args[2])
-        await update.message.reply_text("PayPal keys set.")
+        await update.message.reply_text("PayPal sandbox client_id and secret set.")
     elif gateway == "razorpay":
         if len(args) < 3:
             await update.message.reply_text("Please provide Razorpay id and secret.")
@@ -433,6 +491,80 @@ async def paypalcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ PayPal decline/error: {result.get('error', 'unknown')}")
     log_activity(user.id, user.username or "none", "paypalcheck", card[:6]+"..."+card[-4:])
 
+# New: Create PayPal order (sandbox) and return approval link
+async def paypal_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    args = context.args
+    if not args:
+        await update.message.reply_text("Usage: /paypal_create <amount> (e.g. /paypal_create 1.00)")
+        return
+    amount = args[0]
+    # basic validation of amount
+    if not re.match(r"^\d+(\.\d{1,2})?$", amount):
+        await update.message.reply_text("Invalid amount format. Use numbers like 1 or 1.00")
+        return
+    keys = get_user_keys(user.id)
+    client_id = keys.get("paypalid")
+    client_secret = keys.get("paypalsecret")
+    if not client_id or not client_secret:
+        await update.message.reply_text("PayPal sandbox client_id/secret not set. Use /setkey paypal <client_id> <client_secret>")
+        return
+    await update.message.reply_text("Requesting PayPal sandbox token...")
+    tok = await get_paypal_token(client_id, client_secret)
+    if not tok.get("success"):
+        await update.message.reply_text(f"Error getting token: {tok.get('error')}")
+        return
+    access_token = tok.get("access_token")
+    await update.message.reply_text("Creating sandbox order...")
+    created = await create_paypal_order(access_token, amount=amount, currency="USD")
+    if not created.get("success"):
+        await update.message.reply_text(f"Order creation failed: {created.get('error')}")
+        return
+    order = created["order"]
+    order_id = order.get("id")
+    # find approval link
+    approve_link = None
+    for link in order.get("links", []):
+        if link.get("rel") == "approve":
+            approve_link = link.get("href")
+            break
+    reply = f"Order created (sandbox). Order ID: {order_id}\n"
+    if approve_link:
+        reply += f"Approval link: {approve_link}\n\nOpen this link in a browser, login as a sandbox buyer, and approve the payment. After approval run:\n/paypal_capture {order_id}"
+    else:
+        reply += "Approval link not found in PayPal response."
+    log_activity(user.id, user.username or "none", "paypal_create", f"order {order_id} amount {amount}")
+    await update.message.reply_text(reply)
+
+# New: Capture PayPal order (sandbox)
+async def paypal_capture(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    args = context.args
+    if not args:
+        await update.message.reply_text("Usage: /paypal_capture <order_id>")
+        return
+    order_id = args[0]
+    keys = get_user_keys(user.id)
+    client_id = keys.get("paypalid")
+    client_secret = keys.get("paypalsecret")
+    if not client_id or not client_secret:
+        await update.message.reply_text("PayPal sandbox client_id/secret not set. Use /setkey paypal <client_id> <client_secret>")
+        return
+    await update.message.reply_text("Requesting PayPal sandbox token...")
+    tok = await get_paypal_token(client_id, client_secret)
+    if not tok.get("success"):
+        await update.message.reply_text(f"Error getting token: {tok.get('error')}")
+        return
+    access_token = tok.get("access_token")
+    await update.message.reply_text(f"Capturing order {order_id}...")
+    cap = await capture_paypal_order(access_token, order_id)
+    if cap.get("success"):
+        await update.message.reply_text(f"✅ Capture successful: {cap.get('capture')}")
+        log_activity(user.id, user.username or "none", "paypal_capture", order_id)
+    else:
+        await update.message.reply_text(f"❌ Capture failed: {cap.get('error')}")
+        log_activity(user.id, user.username or "none", "paypal_capture_failed", f"{order_id} {cap.get('error')}")
+
 async def checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not context.args:
@@ -499,6 +631,10 @@ def main():
     application.add_handler(CommandHandler("scrape", scrapecc))
     application.add_handler(CommandHandler("stripecheck", stripecheck))
     application.add_handler(CommandHandler("paypalcheck", paypalcheck))
+    # New PayPal sandbox flow handlers
+    application.add_handler(CommandHandler("paypal_create", paypal_create))
+    application.add_handler(CommandHandler("paypal_capture", paypal_capture))
+
     application.add_handler(CommandHandler("checkout", checkout))
     application.add_handler(CommandHandler("adminstats", adminstats))
 
