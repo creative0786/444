@@ -76,7 +76,6 @@ async def mass_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "📋 **Mass Check:**\n\n"
             "Paste cards line by line:\n"
-            "```
             "4242424242424242|12|25|123\n"
             "4000000000000002|12|25|123\n"
             "5555555555554444|12|25|123\n"
