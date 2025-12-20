@@ -38,7 +38,7 @@ mass_results: list[str] = []
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "MASS CC CHECKER v4.0
+        "MASS CC CHECKER v4.0"
 
 "
         "/start  - Help
