@@ -17,7 +17,7 @@ import stripe
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8203573400:AAH_5txmllDTVL_QTjbxlIqL2T3O9hgqZSs")
 STRIPE_SECRET_KEY = os.getenv(
     "STRIPE_SECRET_KEY",
-    "sk_test_51RI8ZORVVVKRL9SxCtqjnMrJJiFQQhU7uS7jplFoIt4sQ2ciFVZ0Vow0DImqeVaeBBkKDx94NOSE62M30YommO9w00HU8zWbnu",
+    "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",
 )
 
 stripe.api_key = STRIPE_SECRET_KEY
