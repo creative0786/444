@@ -119,4 +119,43 @@ async def mass_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rate = (live / len(mass_results) * 100) if mass_results else 0.0
 
     msg = (
-        f
+        f"Done!\nLIVE: {live}\nDEAD: {dead}\nRate: {rate:.1f}%\n\n"
+        "Last results:\n``````"
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
+
+
+# ====== ECHO (AUTO MASS / SINGLE) ======
+
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text or ""
+
+    # Agar multiple cards lag rahe ho to mass treat karo
+    if re.search(r"\d{16}.*\d{16}", text, re.S):
+        class Dummy:
+            args = []
+        await mass_command(update, Dummy)
+        return
+
+    # Single card pattern
+    if re.search(r"\d{13,19}[|\s]\d{1,2}[|\s]\d{2,4}[|\s]\d{3,4}", text):
+        res = await stripe_check_single(text)
+        await update.message.reply_text(res or "Invalid", parse_mode="Markdown")
+    else:
+        await update.message.reply_text("Use /mass or /start for help.")
+
+
+# ====== MAIN ======
+
+def main():
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("mass", mass_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+
+    app.run_polling()
+
+
+if __name__ == "__main__":
+    main()
