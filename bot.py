@@ -1,645 +1,213 @@
 #!/usr/bin/env python3
-# coding: utf-8
-
-import os
-import sys
-import re
-import random
 import logging
+import os
+import re
 import asyncio
-import aiohttp
-from datetime import datetime
 from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    ContextTypes,
-)
-from playwright.async_api import async_playwright
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+import stripe
 
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
+# Bot Configuration - NEW TOKEN ADDED!
+TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '8203573400:AAH_5txmllDTVL_QTjbxlIqL2T3O9hgqZSs')
+STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY', 'sk_test_51RI8ZORVVVKRL9SxCtqjnMrJJiFQQhU7uS7jplFoIt4sQ2ciFVZ0Vow0DImqeVaeBBkKDx94NOSE62M30YommO9w00HU8zWbnu')
+
+stripe.api_key = STRIPE_SECRET_KEY
+
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Environment variables and constants
-TELEGRAMBOTTOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8497098081:AAFNQzwZxn-7vhTnR0d5fEUmvzDuQ4UEpGk")
-ADMINUSERID = int(os.getenv("ADMIN_USER_ID", "729412805"))
-BINCODESAPIKEY = os.getenv("BINCODES_API_KEY", "425be7cdecc63d7a92ebe8e9bc6773a0")
-PLAYWRIGHT_BROWSERS_PATH = os.getenv("PLAYWRIGHT_BROWSERS_PATH", "0")
+# Mass check results storage
+mass_results = []
 
-# In-memory storage (replace with persistent DB)
-userapikeys = {}
-userproxies = {}
-usersites = {}
-useractivitylog = []
-
-def is_admin(user_id):
-    return user_id == ADMINUSERID
-
-def log_activity(userid, username, action, details):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    useractivitylog.append({
-        "timestamp": timestamp,
-        "userid": userid,
-        "username": username,
-        "action": action,
-        "details": details
-    })
-    logger.info(f"Activity logged: {userid} {username} {action} {details}")
-
-async def notify_admin(context, message):
-    try:
-        await context.bot.send_message(chat_id=ADMINUSERID, text=message, parse_mode="Markdown")
-    except Exception as e:
-        logger.error(f"Error notifying admin: {e}")
-
-def add_proxy(userid, proxy):
-    proxies = userproxies.setdefault(userid, [])
-    if proxy not in proxies:
-        proxies.append(proxy)
-        return True
-    return False
-
-def add_site(userid, site):
-    sites = usersites.setdefault(userid, [])
-    if site not in sites:
-        sites.append(site)
-        return True
-    return False
-
-def set_user_key(userid, gateway, keytype, value):
-    keys = userapikeys.setdefault(userid, {
-        "stripe": None,
-        "paypalid": None,
-        "paypalsecret": None,
-        "razorpayid": None,
-        "razorpaysecret": None,
-    })
-    if gateway == "stripe":
-        keys["stripe"] = value
-    elif gateway == "paypal":
-        if keytype == "id":
-            keys["paypalid"] = value
-        elif keytype == "secret":
-            keys["paypalsecret"] = value
-    elif gateway == "razorpay":
-        if keytype == "id":
-            keys["razorpayid"] = value
-        elif keytype == "secret":
-            keys["razorpaysecret"] = value
-
-def get_user_keys(userid):
-    return userapikeys.get(userid, {
-        "stripe": None,
-        "paypalid": None,
-        "paypalsecret": None,
-        "razorpayid": None,
-        "razorpaysecret": None,
-    })
-
-# Card scraping regex
-def cc_scraper(text):
-    regex = r"(\d{13,16})|(\d{2})|(\d{2,4})|(\d{3,4})"
-    found = re.findall(regex, text)
-    cards = [{"card": c[0], "month": c[1], "year": c[2], "cvv": c[3]} for c in found]
-    return cards
-
-# BIN lookup async
-async def lookup_bin(bin_num):
-    url = f"https://api.bincodes.com/bin?format=json&apikey={BINCODESAPIKEY}&bin={bin_num}"
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, timeout=10) as resp:
-                if resp.status != 200:
-                    return {"success": False, "error": f"HTTP {resp.status}"}
-                data = await resp.json()
-                if data.get("valid"):
-                    return {
-                        "success": True,
-                        "bin": bin_num,
-                        "bank": data.get("bank", "N/A"),
-                        "country": data.get("country", "N/A"),
-                        "brand": data.get("brand", "N/A"),
-                        "type": data.get("type", "N/A"),
-                        "level": data.get("level", "N/A"),
-                        "vbv": "VBV" if "STANDARD" not in str(data.get("level", "")).upper() else "Non-VBV",
-                        "3ds": "Yes" if "VBV" in data.get("level", "").upper() else "No",
-                    }
-                else:
-                    return {"success": False, "bin": bin_num}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-# Luhn algorithm for card validation
-def luhn_check(card_number):
-    digits = list(map(int, str(card_number)))
-    odd_sum = sum(digits[-1::-2])
-    even_sum = sum(sum(divmod(2 * d, 10)) for d in digits[-2::-2])
-    return (odd_sum + even_sum) % 10 == 0
-
-# Stripe card check async
-async def stripe_check(card, month, year, cvv, key):
-    if not key:
-        return {"success": False, "error": "Stripe key not set"}
-    url = "https://api.stripe.com/v1/tokens"
-    payload = {
-        "card[number]": card,
-        "card[exp_month]": month,
-        "card[exp_year]": year,
-        "card[cvc]": cvv
-    }
-    headers = {
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/x-www-form-urlencoded"
-    }
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.post(url, data=payload, headers=headers, timeout=15) as resp:
-                res = await resp.json()
-                if resp.status == 200 and "id" in res:
-                    return {"success": True, "message": "Card valid"}
-                else:
-                    msg = res.get("error", {}).get("message", "Declined")
-                    return {"success": False, "error": msg}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-# Shopify checkout simulation with Playwright
-async def shopify_checkout_simulation(card, month, year, cvv, site_url, proxy=None):
-    if PLAYWRIGHT_BROWSERS_PATH and int(PLAYWRIGHT_BROWSERS_PATH) == 0:
-        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = "0"
-    proxy_arg = None
-    if proxy:
-        proxy_arg = {"server": proxy}
-    try:
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(proxy=proxy_arg, headless=True)
-            context = await browser.new_context()
-            page = await context.new_page()
-            await page.goto(site_url, timeout=60000)
-            # TODO: customize add-to-cart and checkout flow here
-            await asyncio.sleep(5)  # simulate delay
-            await browser.close()
-            return {"success": True, "message": f"Simulated checkout on {site_url}"}
-    except Exception as e:
-        return {"success": False, "message": str(e)}
-
-# PayPal sandbox helpers (OAuth, create order, capture)
-async def get_paypal_token(client_id, client_secret):
-    """Get OAuth token from PayPal sandbox."""
-    if not client_id or not client_secret:
-        return {"success": False, "error": "PayPal client id/secret not set"}
-    url = "https://api-m.sandbox.paypal.com/v1/oauth2/token"
-    auth = aiohttp.BasicAuth(client_id, client_secret)
-    async with aiohttp.ClientSession() as session:
-        try:
-            data = {"grant_type": "client_credentials"}
-            async with session.post(url, data=data, auth=auth, timeout=10) as resp:
-                text = await resp.text()
-                if resp.status != 200:
-                    return {"success": False, "error": f"Auth failed (HTTP {resp.status}): {text}"}
-                j = await resp.json()
-                return {"success": True, "access_token": j.get("access_token"), "expires_in": j.get("expires_in")}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-async def create_paypal_order(access_token, amount="1.00", currency="USD"):
-    """Create a PayPal order (sandbox). Returns order JSON."""
-    url = "https://api-m.sandbox.paypal.com/v2/checkout/orders"
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"}
-    payload = {
-        "intent": "CAPTURE",
-        "purchase_units": [{"amount": {"currency_code": currency, "value": amount}}],
-        "application_context": {
-            "brand_name": "Telegram Bot Sandbox",
-            "landing_page": "NO_PREFERENCE",
-            "user_action": "PAY_NOW"
-        }
-    }
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.post(url, json=payload, headers=headers, timeout=10) as resp:
-                j = await resp.json()
-                if resp.status in (201, 200):
-                    return {"success": True, "order": j}
-                return {"success": False, "error": j}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-async def capture_paypal_order(access_token, order_id):
-    """Capture an approved order."""
-    url = f"https://api-m.sandbox.paypal.com/v2/checkout/orders/{order_id}/capture"
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {access_token}"}
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.post(url, headers=headers, timeout=10) as resp:
-                j = await resp.json()
-                if resp.status in (200, 201):
-                    return {"success": True, "capture": j}
-                return {"success": False, "error": j}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-# Telegram command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    log_activity(user.id, user.username or "none", "start", "User started bot")
-    if user.id not in userproxies:
-        userproxies[user.id] = []
-    if user.id not in usersites:
-        usersites[user.id] = []
-    welcome_msg = (
-        "Welcome to the Premium CC Checker Bot!\n"
-        "Available commands:\n"
-        "/setkey <gateway> <keys>\n"
-        "/bin <bin>\n"
-        "/scrape <cc data>\n"
-        "/stripecheck <card|mm|yyyy|cvv>\n"
-        "/paypalcheck <card|mm|yyyy|cvv>\n"
-        "/paypal_create <amount>  <-- Create PayPal sandbox order and get approval link\n"
-        "/paypal_capture <order_id>  <-- Capture an approved sandbox order\n"
-        "/checkout <card|mm|yyyy|cvv>\n"
-        "/addproxy <ip:port>\n"
-        "/myproxies\n"
-        "/addsite <url>\n"
-        "/mysites\n"
-        "/adminstats (admin only)\n"
-    )
-    await update.message.reply_text(welcome_msg)
+    help_text = """
+🚀 **MASS CC CHECKER BOT v4.0 - LIVE!**
 
-async def setkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    args = context.args
-    if len(args) < 2:
-        await update.message.reply_text(
-            "Usage: /setkey <gateway> <key(s)>\n"
-            "Example:\n"
-            "/setkey stripe sk_test_xxx\n"
-            "/setkey paypal client_id client_secret\n"
-            "/setkey razorpay id secret"
-        )
-        return
-    gateway = args[0].lower()
-    if gateway == "stripe":
-        set_user_key(user.id, "stripe", None, args[1])
-        await update.message.reply_text("Stripe API key set.")
-    elif gateway == "paypal":
-        if len(args) < 3:
-            await update.message.reply_text("Please provide PayPal client id and secret.")
-            return
-        set_user_key(user.id, "paypal", "id", args[1])
-        set_user_key(user.id, "paypal", "secret", args[2])
-        await update.message.reply_text("PayPal sandbox client_id and secret set.")
-    elif gateway == "razorpay":
-        if len(args) < 3:
-            await update.message.reply_text("Please provide Razorpay id and secret.")
-            return
-        set_user_key(user.id, "razorpay", "id", args[1])
-        set_user_key(user.id, "razorpay", "secret", args[2])
-        await update.message.reply_text("Razorpay keys set.")
-    else:
-        await update.message.reply_text("Invalid gateway. Use stripe, paypal or razorpay.")
+**✅ Features:**
+• Single CC Check ✅
+• **MASS Checker (50 cards)** ✅
+• Stripe API Live/Test ✅
+• Live/Dead Stats ✅
+• **NEW BOT TOKEN** ✅
 
-async def addproxy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not context.args:
-        await update.message.reply_text("Usage: /addproxy <ip:port>")
-        return
-    proxy = context.args[0]
-    if add_proxy(user.id, proxy):
-        log_activity(user.id, user.username or "none", "addproxy", proxy)
-        await update.message.reply_text(f"Proxy {proxy} added.")
-    else:
-        await update.message.reply_text("Proxy already exists.")
+**Commands:**
+"""
+    await update.message.reply_text(help_text, parse_mode='Markdown')
 
-async def myproxies(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    proxies = userproxies.get(user.id, [])
-    if proxies:
-        await update.message.reply_text("Your proxies:\n" + "\n".join(proxies))
-    else:
-        await update.message.reply_text("No proxies added.")
-
-async def addsite(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not context.args:
-        await update.message.reply_text("Usage: /addsite <https://example.com>")
-        return
-    site = context.args[0]
-    if not re.match(r"^https?://", site):
-        await update.message.reply_text("Site URL must start with http:// or https://")
-        return
-    if add_site(user.id, site):
-        log_activity(user.id, user.username or "none", "addsite", site)
-        await update.message.reply_text(f"Site {site} added.")
-    else:
-        await update.message.reply_text("Site already exists.")
-
-async def mysites(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    sites = usersites.get(user.id, [])
-    if sites:
-        await update.message.reply_text("Your sites:\n" + "\n".join(sites))
-    else:
-        await update.message.reply_text("No sites added.")
-
-async def binlookup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not context.args:
-        await update.message.reply_text("Usage: /bin <bin>")
-        return
-    bin_num = context.args[0]
-    await update.message.reply_text("Looking up BIN info...")
-    data = await lookup_bin(bin_num)
-    if data.get("success"):
-        resp = (
-            f"BIN: {data['bin']}\n"
-            f"Bank: {data['bank']}\n"
-            f"Country: {data['country']}\n"
-            f"Brand: {data['brand']}\n"
-            f"Type: {data['type']}\n"
-            f"Level: {data['level']}\n"
-            f"VBV: {data['vbv']}\n"
-            f"3DS: {data['3ds']}"
-        )
-    else:
-        resp = "BIN not found or invalid."
-    log_activity(user.id, user.username or "none", "binlookup", bin_num)
-    await update.message.reply_text(resp)
-
-async def scrapecc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    text = update.message.text
-    cards = cc_scraper(text)
-    if not cards:
-        await update.message.reply_text("No valid cards found in input.")
-        return
-    reply = f"Found {len(cards)} cards:\n"
-    for c in cards[:10]:
-        reply += f"{c['card']}|{c['month']}|{c['year']}|{c['cvv']}\n"
-    log_activity(user.id, user.username or "none", "scrapecc", f"{len(cards)} cards found")
-    await update.message.reply_text(reply)
-
-async def stripecheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not context.args:
-        await update.message.reply_text("Usage: /stripecheck <card|mm|yyyy|cvv>")
-        return
-    data = " ".join(context.args)
-    parts = data.split("|")
-    if len(parts) != 4:
-        await update.message.reply_text("Invalid format. Use card|mm|yyyy|cvv")
-        return
-    card, mm, yyyy, cvv = parts
-    if not luhn_check(card):
-        await update.message.reply_text("Invalid card number (Luhn check failed).")
-        return
-    keys = get_user_keys(user.id)
-    msg = await update.message.reply_text("Checking card with Stripe...")
-    result = await stripe_check(card, mm, yyyy, cvv, keys.get("stripe"))
-    if result["success"]:
-        await update.message.reply_text(f"✅ Stripe check approved: {result['message']}")
-    else:
-        await update.message.reply_text(f"❌ Stripe decline: {result['error']}")
-    log_activity(user.id, user.username or "none", "stripecheck", card[:6]+"..."+card[-4:])
-
-async def paypal_check(card, month, year, cvv, client_id, client_secret, sandbox=True):
-    """Attempt a PayPal sandbox vault tokenization of a card.
-
-    SECURITY: This function uses PayPal sandbox endpoints by default. Do NOT
-    call live PayPal APIs without explicit approval. Require both client_id
-    and client_secret to be set. Return a dict: {success: bool, message/error}.
-    """
-    if not client_id or not client_secret:
-        return {"success": False, "error": "PayPal keys not set"}
-
-    token_url = "https://api-m.sandbox.paypal.com/v1/oauth2/token"
-    vault_url = "https://api-m.sandbox.paypal.com/v1/vault/credit-cards"
-
-    # Basic card type heuristic for PayPal payload
-    def _card_type(num: str):
-        if num.startswith("4"):
-            return "visa"
-        if num.startswith(("51", "52", "53", "54", "55")) or num.startswith("2"):
-            return "mastercard"
-        if num.startswith(("34", "37")):
-            return "amex"
-        return "unknown"
-
+async def stripe_check_single(card_data: str):
+    """Single CC check with Stripe"""
     try:
-        async with aiohttp.ClientSession() as session:
-            # Obtain OAuth token
-            data = {"grant_type": "client_credentials"}
-            auth = aiohttp.BasicAuth(client_id, client_secret)
-            async with session.post(token_url, data=data, auth=auth, timeout=10) as resp:
-                if resp.status != 200:
-                    return {"success": False, "error": f"Auth failed (HTTP {resp.status})"}
-                tok = await resp.json()
-                access_token = tok.get("access_token")
-                if not access_token:
-                    return {"success": False, "error": "No access token returned"}
-
-            payload = {
-                "number": card,
-                "type": _card_type(card),
-                "expire_month": int(month),
-                "expire_year": int(year),
-                "cvv2": cvv,
-                "payer_id": "sandbox"
-            }
-            headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
-            async with session.post(vault_url, json=payload, headers=headers, timeout=15) as vresp:
-                vdata = await vresp.json()
-                if vresp.status in (200, 201) and vdata.get("id"):
-                    return {"success": True, "message": "Card tokenized (sandbox)"}
-                # Extract error message if present
-                err = vdata.get("message") or vdata.get("name") or str(vdata)
-                return {"success": False, "error": f"PayPal decline: {err}"}
+        parts = re.split(r'[\|\s]+', card_data.strip())
+        if len(parts) < 4:
+            return None
+        
+        card_number, month, year, cvc = parts[0], int(parts[1]), int(parts[2]), parts[3]
+        
+        # Rate limit protection
+        await asyncio.sleep(0.2)
+        
+        intent = stripe.PaymentIntent.create(
+            amount=100,  # ₹1 test
+            currency='inr',
+            payment_method_data={
+                'type': 'card',
+                'card': {
+                    'number': card_number,
+                    'exp_month': month,
+                    'exp_year': year,
+                    'cvc': cvc,
+                },
+            },
+            confirm=True,
+            automatic_payment_methods={'enabled': True},
+        )
+        
+        status = "🟢 LIVE" if intent.status == 'succeeded' else "🔴 DEAD"
+        return f"`{card_number[-4:]}...` | {status} | {intent.status}"
+        
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return f"`{card_data[:15]}...` | ❌ DECLINED"
 
-
-async def paypalcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
+async def mass_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mass card checker - up to 50 cards"""
+    global mass_results
+    
     if not context.args:
-        await update.message.reply_text("Usage: /paypalcheck <card|mm|yyyy|cvv>")
+        await update.message.reply_text(
+            "📋 **Mass Check:**\n\n"
+            "Paste cards line by line:\n"
+            "```
+            "4242424242424242|12|25|123\n"
+            "4000000000000002|12|25|123\n"
+            "5555555555554444|12|25|123\n"
+            "```\n\n"
+            "Max 50 cards | Auto processing!", parse_mode='Markdown'
+        )
         return
-    data = " ".join(context.args)
-    parts = data.split("|")
-    if len(parts) != 4:
-        await update.message.reply_text("Invalid format. Use card|mm|yyyy|cvv")
+    
+    # Extract cards from message
+    cards_text = ' '.join(context.args)
+    card_lines = [line.strip() for line in cards_text.split('\n') if re.search(r'\d{13,19}', line)]
+    
+    if len(card_lines) > 50:
+        await update.message.reply_text("⚠️ Max 50 cards allowed!")
+        card_lines = card_lines[:50]
+    
+    await update.message.reply_chat_action("typing")
+    await update.message.reply_text(f"🔄 Checking **{len(card_lines)}** cards...", parse_mode='Markdown')
+    
+    mass_results.clear()
+    
+    # Concurrent checking with semaphore (max 5 at once)
+    semaphore = asyncio.Semaphore(5)
+    
+    async def check_with_limit(card):
+        async with semaphore:
+            result = await stripe_check_single(card)
+            if result:
+                mass_results.append(result)
+            return result
+    
+    tasks = [check_with_limit(card) for card in card_lines]
+    await asyncio.gather(*tasks)
+    
+    # Results summary
+    live_count = sum(1 for r in mass_results if '🟢 LIVE' in r)
+    dead_count = len(mass_results) - live_count
+    success_rate = (live_count / len(mass_results) * 100) if mass_results else 0
+    
+    summary = f"""
+📊 **MASS CHECK COMPLETE!**
+✅ **LIVE:** {live_count}
+❌ **DEAD:** {dead_count} 
+📈 **Success:** {success_rate:.1f}%
+🔢 **Total:** {len(mass_results)}
+
+**🎯 Top 10 Results:**
+"""
+    await update.message.reply_text(summary, parse_mode='Markdown')
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global mass_results
+    if not mass_results:
+        await update.message.reply_text("📭 No results. Use `/mass` first!")
         return
-    card, mm, yyyy, cvv = parts
-    if not luhn_check(card):
-        await update.message.reply_text("Invalid card number (Luhn check failed).")
+    
+    live = sum(1 for r in mass_results if '🟢 LIVE' in r)
+    rate = live / len(mass_results) * 100
+    await update.message.reply_text(
+        f"📈 **STATS:** `{live}/{len(mass_results)}` LIVE\n"
+        f"📊 **{rate:.1f}%** Success Rate", parse_mode='Markdown')
+
+async def setkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global stripe
+    if not context.args:
+        await update.message.reply_text("❌ `/setkey sk_live_...` or `/setkey sk_test_...`", parse_mode='Markdown')
         return
-    keys = get_user_keys(user.id)
-    client_id = keys.get("paypalid")
-    client_secret = keys.get("paypalsecret")
-    await update.message.reply_text("Checking card with PayPal sandbox...")
-    # Notify admin of use for auditing
+    
+    new_key = context.args[0]
     try:
-        await notify_admin(context, f"User {user.username or user.id} performed PayPal check")
-    except Exception:
-        pass
-    result = await paypal_check(card, mm, yyyy, cvv, client_id, client_secret, sandbox=True)
-    if result["success"]:
-        await update.message.reply_text(f"✅ PayPal sandbox approved: {result['message']}")
-    else:
-        await update.message.reply_text(f"❌ PayPal decline/error: {result.get('error', 'unknown')}")
-    log_activity(user.id, user.username or "none", "paypalcheck", card[:6]+"..."+card[-4:])
+        stripe.api_key = new_key
+        stripe.Account.retrieve()
+        key_type = "🔴 LIVE" if new_key.startswith('sk_live_') else "🟢 TEST"
+        await update.message.reply_text(
+            f"✅ **Key Updated!**\n"
+            f"{key_type} Mode\n"
+            f"`{new_key[:10]}...`", parse_mode='Markdown')
+    except Exception as e:
+        await update.message.reply_text(f"❌ Invalid key: `{str(e)[:50]}`", parse_mode='Markdown')
 
-# New: Create PayPal order (sandbox) and return approval link
-async def paypal_create(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    args = context.args
-    if not args:
-        await update.message.reply_text("Usage: /paypal_create <amount> (e.g. /paypal_create 1.00)")
-        return
-    amount = args[0]
-    # basic validation of amount
-    if not re.match(r"^\d+(\.\d{1,2})?$", amount):
-        await update.message.reply_text("Invalid amount format. Use numbers like 1 or 1.00")
-        return
-    keys = get_user_keys(user.id)
-    client_id = keys.get("paypalid")
-    client_secret = keys.get("paypalsecret")
-    if not client_id or not client_secret:
-        await update.message.reply_text("PayPal sandbox client_id/secret not set. Use /setkey paypal <client_id> <client_secret>")
-        return
-    await update.message.reply_text("Requesting PayPal sandbox token...")
-    tok = await get_paypal_token(client_id, client_secret)
-    if not tok.get("success"):
-        await update.message.reply_text(f"Error getting token: {tok.get('error')}")
-        return
-    access_token = tok.get("access_token")
-    await update.message.reply_text("Creating sandbox order...")
-    created = await create_paypal_order(access_token, amount=amount, currency="USD")
-    if not created.get("success"):
-        await update.message.reply_text(f"Order creation failed: {created.get('error')}")
-        return
-    order = created["order"]
-    order_id = order.get("id")
-    # find approval link
-    approve_link = None
-    for link in order.get("links", []):
-        if link.get("rel") == "approve":
-            approve_link = link.get("href")
-            break
-    reply = f"Order created (sandbox). Order ID: {order_id}\n"
-    if approve_link:
-        reply += f"Approval link: {approve_link}\n\nOpen this link in a browser, login as a sandbox buyer, and approve the payment. After approval run:\n/paypal_capture {order_id}"
-    else:
-        reply += "Approval link not found in PayPal response."
-    log_activity(user.id, user.username or "none", "paypal_create", f"order {order_id} amount {amount}")
-    await update.message.reply_text(reply)
-
-# New: Capture PayPal order (sandbox)
-async def paypal_capture(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    args = context.args
-    if not args:
-        await update.message.reply_text("Usage: /paypal_capture <order_id>")
-        return
-    order_id = args[0]
-    keys = get_user_keys(user.id)
-    client_id = keys.get("paypalid")
-    client_secret = keys.get("paypalsecret")
-    if not client_id or not client_secret:
-        await update.message.reply_text("PayPal sandbox client_id/secret not set. Use /setkey paypal <client_id> <client_secret>")
-        return
-    await update.message.reply_text("Requesting PayPal sandbox token...")
-    tok = await get_paypal_token(client_id, client_secret)
-    if not tok.get("success"):
-        await update.message.reply_text(f"Error getting token: {tok.get('error')}")
-        return
-    access_token = tok.get("access_token")
-    await update.message.reply_text(f"Capturing order {order_id}...")
-    cap = await capture_paypal_order(access_token, order_id)
-    if cap.get("success"):
-        await update.message.reply_text(f"✅ Capture successful: {cap.get('capture')}")
-        log_activity(user.id, user.username or "none", "paypal_capture", order_id)
-    else:
-        await update.message.reply_text(f"❌ Capture failed: {cap.get('error')}")
-        log_activity(user.id, user.username or "none", "paypal_capture_failed", f"{order_id} {cap.get('error')}")
-
-async def checkout(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
+async def stripe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Usage: /checkout <card|mm|yyyy|cvv>")
+        await update.message.reply_text("❌ `/stripe 4242424242424242|12|25|123`", parse_mode='Markdown')
         return
-    data = context.args[0]
-    parts = data.split("|")
-    if len(parts) != 4:
-        await update.message.reply_text("Invalid format. Use card|mm|yyyy|cvv")
-        return
-    card, mm, yyyy, cvv = parts
-    if not luhn_check(card):
-        await update.message.reply_text("Invalid card number (Luhn check failed).")
-        return
-    sites = usersites.get(user.id, [])
-    proxies = userproxies.get(user.id, [])
-    if not sites:
-        await update.message.reply_text("No Shopify sites configured. Use /addsite")
-        return
-    site = random.choice(sites)
-    proxy = random.choice(proxies) if proxies else None
-    msg = await update.message.reply_text(f"Running checkout simulation on {site} with proxy {proxy}...")
-    result = await shopify_checkout_simulation(card, mm, yyyy, cvv, site, proxy)
-    if result["success"]:
-        await update.message.reply_text(f"✅ Checkout successful: {result['message']}")
+    
+    card_data = ' '.join(context.args)
+    await update.message.reply_chat_action("typing")
+    result = await stripe_check_single(card_data)
+    await update.message.reply_text(result or "❌ Invalid format", parse_mode='Markdown')
+
+async def clear_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global mass_results
+    mass_results.clear()
+    await update.message.reply_text("🗑️ Results cleared!")
+
+async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    
+    # Auto mass check (multiple lines with cards)
+    if '\n' in text and re.search(r'\d{16}', text):
+        await mass_check(update, context)
+    # Single card auto check
+    elif re.search(r'\d{13,19}[|\s]\d{1,2}[|\s]\d{2,4}[|\s]\d{3,4}', text):
+        result = await stripe_check_single(text)
+        await update.message.reply_text(result or "❌ Invalid CC", parse_mode='Markdown')
     else:
-        await update.message.reply_text(f"❌ Checkout failed: {result.get('message', 'unknown error')}")
-    log_activity(user.id, user.username or "none", "checkout", f"{card[:6]}... via {site}")
+        await update.message.reply_text(
+            "💬 Send cards or use:\n"
+            "• `/stripe card|MM|YY|CVC`\n"
+            "• `/mass` + paste cards", parse_mode='Markdown')
 
-async def adminstats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not is_admin(user.id):
-        await update.message.reply_text("Admin only command.")
-        return
-    total_users = len(userapikeys)
-    total_activities = len(useractivitylog)
-    total_proxies = sum(len(v) for v in userproxies.values())
-    total_sites = sum(len(v) for v in usersites.values())
-    recent_logs = useractivitylog[-10:]
-    msg = (
-        f"Admin Stats:\n"
-        f"Users: {total_users}\n"
-        f"Total Activities: {total_activities}\n"
-        f"Total Proxies: {total_proxies}\n"
-        f"Total Sites: {total_sites}\n\n"
-        f"Recent Activity:\n"
-    )
-    for log in recent_logs:
-        msg += f"{log['username']} [{log['userid']}]: {log['action']} - {log['details']} at {log['timestamp']}\n"
-    await update.message.reply_text(msg)
-
-# Main function to run bot
 def main():
-    application = Application.builder().token(TELEGRAMBOTTOKEN).build()
+    if not TOKEN:
+        logger.error("🚫 TELEGRAM_BOT_TOKEN missing!")
+        return
+    
+    app = Application.builder().token(TOKEN).build()
+    
+    # All command handlers
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", start))
+    app.add_handler(CommandHandler("setkey", setkey_command))
+    app.add_handler(CommandHandler("stripe", stripe_command))
+    app.add_handler(CommandHandler("mass", mass_check))
+    app.add_handler(CommandHandler("stats", stats_command))
+    app.add_handler(CommandHandler("clear", clear_command))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    
+    logger.info(f"🚀 MASS CC CHECKER started! Token: {TOKEN[:10]}...")
+    logger.info(f"💳 Stripe: {STRIPE_SECRET_KEY[:10]}...")
+    app.run_polling()
 
-    # Register all handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("setkey", setkey))
-    application.add_handler(CommandHandler("addproxy", addproxy))
-    application.add_handler(CommandHandler("myproxies", myproxies))
-    application.add_handler(CommandHandler("addsite", addsite))
-    application.add_handler(CommandHandler("mysites", mysites))
-    application.add_handler(CommandHandler("bin", binlookup))
-    application.add_handler(CommandHandler("scrape", scrapecc))
-    application.add_handler(CommandHandler("stripecheck", stripecheck))
-    application.add_handler(CommandHandler("paypalcheck", paypalcheck))
-    # New PayPal sandbox flow handlers
-    application.add_handler(CommandHandler("paypal_create", paypal_create))
-    application.add_handler(CommandHandler("paypal_capture", paypal_capture))
-
-    application.add_handler(CommandHandler("checkout", checkout))
-    application.add_handler(CommandHandler("adminstats", adminstats))
-
-    logger.info("Bot started polling...")
-    application.run_polling()
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
