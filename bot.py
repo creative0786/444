@@ -30,24 +30,11 @@ mass_results = []
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "🚀 MASS CC CHECKER v4.0
-
-"
-        "/start - Help
-"
-        "/setkey sk_live_... - Stripe key set
-"
-        "/stripe card|MM|YY|CVC - single check
-"
-        "/mass <cards> - mass check (max 50)
-"
-        "/stats - summary
-"
-        "/clear - clear results
-"
+    await update.message.reply_text(
+        "MASS CC CHECKER v4.0
+Use /stripe or /mass. "
+        "Agar error aaye to mujhe log bhejo."
     )
-    await update.message.reply_text(text)
 
 
 async def stripe_check_single(card_data: str) -> str | None:
