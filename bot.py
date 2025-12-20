@@ -31,7 +31,7 @@ mass_results = []
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
-        "🚀 MASS CC CHECKER v4.0
+        " MASS CC CHECKER v4.0
 
 "
         "/start - Help
@@ -75,10 +75,10 @@ async def stripe_check_single(card_data: str) -> str | None:
             confirm=True,
             automatic_payment_methods={"enabled": True},
         )
-        status = "🟢 LIVE" if intent.status == "succeeded" else "🔴 DEAD"
+        status = " LIVE" if intent.status == "succeeded" else " DEAD"
         return f"{number[-4:]}... | {status} | {intent.status}"
     except Exception:
-        return f"{card_data[:15]}... | ❌ DECLINED"
+        return f"{card_data[:15]}... |  DECLINED"
 
 
 async def stripe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -143,7 +143,7 @@ async def mass_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await asyncio.gather(*(worker(c) for c in lines))
 
-    live = sum(1 for r in mass_results if "🟢 LIVE" in r)
+    live = sum(1 for r in mass_results if " LIVE" in r)
     dead = len(mass_results) - live
     rate = (live / len(mass_results) * 100) if mass_results else 0
 
@@ -165,7 +165,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not mass_results:
         await update.message.reply_text("No mass results yet.")
         return
-    live = sum(1 for r in mass_results if "🟢 LIVE" in r)
+    live = sum(1 for r in mass_results if " LIVE" in r)
     rate = live / len(mass_results) * 100
     await update.message.reply_text(f"Stats: {live}/{len(mass_results)} LIVE ({rate:.1f}%)")
 
